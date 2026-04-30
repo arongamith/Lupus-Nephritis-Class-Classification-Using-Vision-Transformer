@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Renal Biopsy ViT Classifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:       #0b0f14;
+    --surface:  #111720;
+    --card:     #161d27;
+    --border:   #1e2a38;
+    --accent:   #3ee8b5;
+    --accent2:  #5b8dee;
+    --danger:   #f06a6a;
+    --warn:     #f0a86a;
+    --text:     #e8edf3;
+    --muted:    #6b7a8d;
+    --font-display: 'DM Serif Display', serif;
+    --font-body:    'Outfit', sans-serif;
+    --font-mono:    'DM Mono', monospace;
+    --radius:   14px;
+    --radius-sm: 8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+  }
+
+  header {
+    position: relative;
+    z-index: 1;
+    padding: 52px 48px 36px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .header-left h1 {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 4vw, 44px);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .header-left h1 em { font-style: italic; color: var(--accent); }
+
+  .header-left p {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 300;
+    letter-spacing: 0.02em;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  .badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  .drop-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 64px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.25s, background 0.25s;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 120%, rgba(62,232,181,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: #0d1a22;
+  }
+
+  .drop-icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 20px;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--card);
+    transition: border-color 0.25s;
+  }
+
+  .drop-zone:hover .drop-icon { border-color: var(--accent); }
+  .drop-icon svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  .drop-zone h2 { font-weight: 500; font-size: 18px; margin-bottom: 8px; }
+  .drop-zone p  { color: var(--muted); font-size: 13px; font-weight: 300; }
+  .drop-zone p span { color: var(--accent); font-weight: 500; }
+
+  #file-input { display: none; }
+
+  #file-list { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .file-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    animation: fadeUp 0.3s ease both;
+  }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  .btn-run {
+    margin-top: 24px;
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: #071a13;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+
+  .btn-run:hover   { opacity: 0.88; transform: translateY(-1px); }
+  .btn-run:active  { transform: translateY(0); }
+  .btn-run:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  #loader { display: none; margin-top: 48px; text-align: center; }
+
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loader p { color: var(--muted); font-size: 14px; font-family: var(--font-mono); }
+
+  #results { margin-top: 56px; }
+
+  .results-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .results-header h2 { font-family: var(--font-display); font-size: 26px; }
+  .results-header span { font-size: 13px; color: var(--muted); font-family: var(--font-mono); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 20px;
+  }
+
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    animation: fadeUp 0.4s ease both;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .result-card:hover { border-color: #2a3a4e; transform: translateY(-2px); }
+  .result-card.high   { --conf-color: var(--accent); }
+  .result-card.medium { --conf-color: var(--warn); }
+  .result-card.low    { --conf-color: var(--danger); }
+
+  /* Warning banner for out-of-distribution images */
+  .warning-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(240, 168, 106, 0.1);
+    border-bottom: 1px solid rgba(240, 168, 106, 0.3);
+  }
+
+  .warning-icon {
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: var(--warn);
+  }
+
+  .warning-banner p {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--warn);
+    line-height: 1.5;
+  }
+
+  .card-image {
+    width: 100%; aspect-ratio: 1;
+    object-fit: cover; display: block;
+    background: var(--surface);
+  }
+
+  .card-body { padding: 20px; }
+
+  .card-filename {
+    font-size: 11px; font-family: var(--font-mono); color: var(--muted);
+    margin-bottom: 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .card-class {
+    font-family: var(--font-display);
+    font-size: 20px; color: var(--text);
+    margin-bottom: 6px; line-height: 1.2;
+  }
+
+  .card-desc {
+    font-size: 12px; color: var(--muted); font-weight: 300;
+    line-height: 1.6; margin-bottom: 18px;
+  }
+
+  .conf-row {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  }
+
+  .conf-label { font-size: 11px; font-family: var(--font-mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .conf-value { font-size: 22px; font-weight: 600; font-family: var(--font-mono); color: var(--conf-color); letter-spacing: -0.02em; }
+
+  .conf-bar-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 18px; }
+  .conf-bar-fill  { height: 100%; border-radius: 2px; background: var(--conf-color); transition: width 0.8s cubic-bezier(0.16,1,0.3,1); width: 0; }
+
+  .all-probs { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 7px; }
+
+  .prob-row { display: flex; align-items: center; gap: 8px; }
+  .prob-name { font-size: 10px; font-family: var(--font-mono); color: var(--muted); width: 160px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prob-track { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .prob-fill  { height: 100%; border-radius: 2px; background: var(--accent2); transition: width 1s cubic-bezier(0.16,1,0.3,1); width: 0; }
+  .prob-fill.top { background: var(--conf-color); }
+  .prob-pct { font-size: 10px; font-family: var(--font-mono); color: var(--muted); width: 38px; text-align: right; }
+
+  .error-card {
+    background: var(--card); border: 1px solid #3a1f1f;
+    border-radius: var(--radius); padding: 24px;
+    animation: fadeUp 0.4s ease both;
+  }
+
+  .error-card h3 { font-size: 14px; color: var(--danger); margin-bottom: 6px; }
+  .error-card p  { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Renal Biopsy<br/><em>ViT Classifier</em></h1>
+    <p>Vision Transformer · 4-class lupus nephritis detection · Transfer learning</p>
+  </div>
+  <div class="badge">
+    <span class="badge-dot"></span>
+    MODEL READY
+  </div>
+</header>
+
+<main>
+
+  <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    </div>
+    <h2>Drop glomerulus images here</h2>
+    <p>PNG, JPG, JPEG &nbsp;·&nbsp; <span>Click to browse</span> or drag &amp; drop &nbsp;·&nbsp; Multiple files supported</p>
+    <input type="file" id="file-input" accept="image/*" multiple/>
+  </div>
+
+  <div id="file-list"></div>
+
+  <button class="btn-run" id="run-btn" disabled onclick="runPrediction()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap: round; stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    Run Classification
+  </button>
+
+  <div id="loader">
+    <div class="spinner"></div>
+    <p>Running inference — please wait...</p>
+  </div>
+
+  <div id="results"></div>
+
+</main>
+
+<script>
+  const dropZone  = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const fileList  = document.getElementById('file-list');
+  const runBtn    = document.getElementById('run-btn');
+  const loader    = document.getElementById('loader');
+  const results   = document.getElementById('results');
+
+  let selectedFiles = [];
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    handleFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+  });
+
+  fileInput.addEventListener('change', () => handleFiles(Array.from(fileInput.files)));
+
+  function handleFiles(files) {
+    selectedFiles = files;
+    fileList.innerHTML = '';
+    files.forEach(f => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      chip.textContent = f.name;
+      fileList.appendChild(chip);
+    });
+    runBtn.disabled = files.length === 0;
+  }
+
+  async function runPrediction() {
+    if (!selectedFiles.length) return;
+    results.innerHTML = '';
+    loader.style.display = 'block';
+    runBtn.disabled = true;
+
+    const formData = new FormData();
+    selectedFiles.forEach(f => formData.append('files', f));
+
+    try {
+      const res  = await fetch('/predict', { method: 'POST', body: formData });
+      const data = await res.json();
+      loader.style.display = 'none';
+      renderResults(data);
+    } catch (err) {
+      loader.style.display = 'none';
+      results.innerHTML = `<div class="error-card"><h3>Connection Error</h3><p>Could not reach the Flask server. Make sure app.py is running on port 5000.</p></div>`;
+    } finally {
+      runBtn.disabled = false;
+    }
+  }
+
+  function confClass(c) {
+    if (c >= 80) return 'high';
+    if (c >= 50) return 'medium';
+    return 'low';
+  }
+
+  function renderResults(data) {
+    const header = document.createElement('div');
+    header.className = 'results-header';
+    header.innerHTML = `<h2>Results</h2><span>${data.length} image${data.length !== 1 ? 's' : ''} analysed</span>`;
+    results.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+
+    data.forEach((item, idx) => {
+      if (item.error) {
+        const card = document.createElement('div');
+        card.className = 'error-card';
+        card.style.animationDelay = `${idx * 0.06}s`;
+        card.innerHTML = `<h3>${item.filename}</h3><p>${item.error}</p>`;
+        grid.appendChild(card);
+        return;
+      }
+
+      const card = document.createElement('div');
+      card.className = `result-card ${confClass(item.confidence)}`;
+      card.style.animationDelay = `${idx * 0.06}s`;
+
+      const allProbsHtml = Object.entries(item.all_probabilities)
+        .sort((a, b) => b[1] - a[1])
+        .map(([cls, pct]) => {
+          const isTop = cls === item.predicted_class;
+          return `
+            <div class="prob-row">
+              <span class="prob-name">${cls}</span>
+              <div class="prob-track"><div class="prob-fill${isTop ? ' top' : ''}" data-w="${pct}"></div></div>
+              <span class="prob-pct">${pct.toFixed(1)}%</span>
+            </div>`;
+        }).join('');
+
+      // Warning banner for out-of-distribution images
+      const warningHtml = item.warning ? `
+        <div class="warning-banner">
+          <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <p>${item.warning}</p>
+        </div>` : '';
+
+      card.innerHTML = `
+        ${warningHtml}
+        <img class="card-image" src="data:image/jpeg;base64,${item.image_b64}" alt="${item.filename}"/>
+        <div class="card-body">
+          <div class="card-filename">${item.filename}</div>
+          <div class="card-class">${item.predicted_class}</div>
+          <div class="card-desc">${item.description}</div>
+          <div class="conf-row">
+            <span class="conf-label">Confidence</span>
+            <span class="conf-value">${item.confidence.toFixed(1)}%</span>
+          </div>
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill" data-w="${item.confidence}"></div>
+          </div>
+          <div class="all-probs">${allProbsHtml}</div>
+        </div>`;
+
+      grid.appendChild(card);
+    });
+
+    results.appendChild(grid);
+
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        document.querySelectorAll('.conf-bar-fill, .prob-fill').forEach(el => {
+          el.style.width = el.dataset.w + '%';
+        });
+      }, 80);
+    });
+  }
+</script>
+</body>
+</html>
